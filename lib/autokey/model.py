@@ -265,19 +265,29 @@ class AbstractWindowFilter:
 
     def __init__(self):
         self.windowInfoRegex = None
+        self.windowInfoRegexNot = None
         self.isRecursive = False
 
     def get_serializable(self):
+        data = {"regex": None, "isRecursive": False}
+        
         if self.windowInfoRegex is not None:
-            return {"regex": self.windowInfoRegex.pattern, "isRecursive": self.isRecursive}
-        else:
-            return {"regex": None, "isRecursive": False}
+            data["regex"] = self.windowInfoRegex.pattern
+            data['isRecursive'] = self.isRecursive
+        if self.windowInfoRegexNot is not None:
+            data["regex_not"] = self.windowInfoRegexNot.pattern
+            data['isRecursive'] = self.isRecursive
+
+        return data
 
     def load_from_serialized(self, data):
         try:
             if isinstance(data, dict): # check needed for data from versions < 0.80.4
                 self.set_window_titles(data["regex"])
                 self.isRecursive = data["isRecursive"]
+                regex_not = data.get('regex_not')
+                if regex_not:
+                    self.windowInfoRegexNot = re.compile(regex_not, re.UNICODE)
             else:
                 self.set_window_titles(data)
         except re.error as e:
@@ -300,7 +310,7 @@ class AbstractWindowFilter:
         self.isRecursive = recurse
 
     def has_filter(self) -> bool:
-        return self.windowInfoRegex is not None
+        return self.windowInfoRegex is not None or self.windowInfoRegexNot is not None
 
     def inherits_filter(self) -> bool:
         if self.parent is not None:
@@ -347,15 +357,20 @@ class AbstractWindowFilter:
 
     def _should_trigger_window_title(self, window_info):
         r = self.get_applicable_regex()  # type: typing.Pattern
+        regex_not= self.windowInfoRegexNot
         if r is not None:
-            return bool(r.match(window_info.wm_title)) or bool(r.match(window_info.wm_class))
-        else:
-            return True
+            return bool(r.match(window_info.wm_class))
+        
+        if regex_not:
+            return not bool(regex_not.match(window_info.wm_class))
+        
+        return True
 
 
 class AbstractHotkey(AbstractWindowFilter):
 
     def __init__(self):
+        super().__init__()
         self.modifiers = []
         self.hotKey = None
 
